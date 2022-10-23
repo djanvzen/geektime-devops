@@ -1,3 +1,6 @@
+#
+week01 笔记
+
 ## Linux 中 Namespace 的作用
 
 在内核中实现容器之间的资源隔离
@@ -14,10 +17,10 @@
 | Syslog Namespace | 提供syslog隔离能力 | 
 | Control group (cgroup) Namespace |  提供进程所属的控制组的身份隔离 |
 
-## 使用 apt/yum/ 二进制安装指定版本的 Docker
-# docker的安装
 
-## apt安装
+## docker的安装
+
+### apt安装
 ```bash
 # step 1: 安装必要的一些系统工具
 sudo apt-get update
@@ -34,11 +37,9 @@ apt-cache madison docker-ce
 #  docker-ce | 5:20.10.17~3-0~ubuntu-jammy | https://mirrors.aliyun.com/docker-ce/linux/ubuntu jammy/stable amd64 Packages
 # version即为第二段（如5:20.10.18~3-0~ubuntu-jammy）
 sudo apt-get -y install docker-ce=[VERSION]
-
 ```
 
-
-## yum安装
+### yum安装
 ```bash
 # step 1: 安装必要的一些系统工具
 sudo yum install -y yum-utils device-mapper-persistent-data lvm2
@@ -75,9 +76,9 @@ sudo service docker start
 yum install docker-ce --downloaddir=./ --downloadonly
 ```
 
-## 二进制安装
+### 二进制安装
 
-提前下载好docker-ce的tar包，使用以下脚本进行安装
+提前下载好docker-ce的tar包，使用以下脚本进行安装，并替换 `PACKAGE_NAME` 字段
 ```bash
 #!/bin/bash
 DIR=`pwd`
@@ -166,8 +167,79 @@ main
 ```
 
 
-## 熟练使用 Docker 数据卷
+## Docker 数据卷
+
+### 数据管理
+
+- Lower Dir：image镜像层(镜像本身，只读)
+- Upper Dir：容器的上层(读写)，容器运行中产生的文件都会放到此处
+- Merged Dir：容器的文件系统，使用Union FS（联合文件系统）将lowerdir和upper Dir：合并给容器使用。
+- Work Dir：容器在 宿主机的工作目录
+
+### 数据的持久化
+容器删除时会删除读写层的数据（stop时不会），所以需要对需要保存下来的数据进行持久化。
+- 使用数据卷
+ ```bash
+ # docker run -d -v <宿主机目录1>:<容器目录1>[:ro]  [-v <宿主机目录2>:<容器目录2>[:ro]] -p <宿主机端口>:<容器端口> 镜像
+docker run -d --name web2 -v /data/testapp:/usr/share/nginx/html/testapp:ro -p 81:80 nginx
+ ```
+- 使用数据卷容器（基本不使用）
+	1. 创建数据卷
+	
+	```bash
+	docker run -d --name volume-server -v data/testapp:/usr/share/nginx/html/testapp -v /data/nginx/conf/nginx.conf:/etc/nginx/nginx.conf:ro registry.cn-hangzhou.aliyuncs.com/zhangshijie/pause:3.8
+	```
+
+  2. 创建继承的容器
+	```bash
+	docker run -d --name web1 --volumes-from volume-server -p80:80 nginx:1.20.2
+	```
+
+	3. 数据卷的特点
+	- client会继承卷server挂载和挂载权限
+	- 停止卷server对新建容器及已创建的容器没有影响
+	- 删除卷server，不影响已经运行的容器，但是不能新建容器
 
 
+## Docker 的 bridge 和 container 模式网络
 
-## 熟练使用 Docker 的 bridge 和 container 模式网络
+### 网络模式
+
+- null模式 
+ 是最简单的模式，也就是没有网络，但允许其他的网络插件来自定义网络连接
+
+- bridge 模式
+桥接模式，docker的默认网络模式，可以不显式指定网络模式，容器和宿主机再通过虚拟网卡接入这个网桥（即 docker0）。
+
+	 ```bash
+	 docker run -d -p 80:80 [--net=bridge] nginx:1.23.2-alpine  
+	```
+ 	可以使用 `brctl` 查看网桥的对应关系
+	```bash
+	apt install bridge-utils 
+	brctl show
+	```
+ 
+- host 模式
+直接使用宿主机网络，不需要指定端口映射,相当于去掉了容器的网络隔离（其他隔离依然保留），所有的容器会共享宿主机的 IP 地址和网卡。这种模式没有中间层，性能最好，host 模式需要在 docker run 时使用 `--net=host` 参数
+
+- container模式
+使用参数 `--net=container` 指定，创建容器时指定另一已存在的容器的网络进行共享net namespace
+	1. 创建bridge模式的容器
+	```bash
+	docker run -d --name ngx1 -p 80:80 b99
+	```
+	2. 创建container模式的容器
+	```bash
+	# --net=<需要共享的容器名>
+	docker run -d --name php --net=ngx1 php:7.4.30-fpm-alpine
+	```
+
+### namespace
+ubuntu 22.04 在 `/var/run/docker/netns/` 下
+```bash
+ln -s /var/run/docker/netns/* /var/run/netns/
+ip netns list
+ip netns exec 6359049d9b95 ip a
+
+```
